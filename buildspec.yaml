@@ -2,20 +2,12 @@ version: 0.2
 
 phases:
   install:
-    runtime-versions:
-      python: 3.9
+    commands:
+      - echo "Installing stuff..."
   build:
     commands:
-      - echo "Building Lambda deployment packages"
-      - cd LambdaFunctions
-      - zip index-photos.zip index-photos.py
-      - zip search-photos.zip search-photos.py
-post_build:
-  commands:
-    - echo "Deploying to Lambda functions"
-    - aws lambda update-function-code --function-name index-photos --zip-file fileb://index-photos.zip
-    - aws lambda update-function-code --function-name search-photos --zip-file fileb://search-photos.zip
+      - echo "Building stuff..."
+      - echo "Hello World from CodeBuild!"
 artifacts:
   files:
-    - LambdaFunctions/index-photos.zip
-    - LambdaFunctions/search-photos.zip
+    - '**/*'
