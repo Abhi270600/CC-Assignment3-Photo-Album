@@ -29,9 +29,8 @@ def lambda_handler(event, context):
     # Get the S3 bucket and key from the event
     bucket = event['Records'][0]['s3']['bucket']['name']
     key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
-    # bucket = event['Records'][0]['s3']['bucket']['name']
-    # key = event['Records'][0]['s3']['object']['key']
 
+    print("Staring to index photos")
     print("bucket:", bucket)
     print("key:", key)
 
