@@ -12,9 +12,9 @@ s3 = boto3.client('s3')
 rekognition = boto3.client('rekognition', region_name='us-east-1')
 
 # ElasticSearch configuration
-es_endpoint = "<ENDPOINT>"
-es_username = "<USERNAME>"
-es_password = "<PASSWORD>"
+es_endpoint = "https://search-photos-37ap2zxpgqqsuw4s7xl6oy552m.aos.us-east-1.on.aws"
+es_username = "aa12037"
+es_password = "Abhikeer@123"
 
 es = OpenSearch(
     hosts=[{'host': es_endpoint, 'port': 443}],
