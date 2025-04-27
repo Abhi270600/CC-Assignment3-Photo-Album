@@ -4,17 +4,28 @@ phases:
   install:
     runtime-versions:
       python: 3.9
+
   build:
     commands:
       - echo "Building Lambda deployment packages"
       - cd LambdaFunctions
-      - zip index-photos.zip index-photos.py
-      - zip search-photos.zip search-photos.py
+
+      # For index-photos
+      - cp index-photos.py lambda_function.py
+      - zip index-photos.zip lambda_function.py
+      - rm lambda_function.py
+
+      # For search-photos
+      - cp search-photos.py lambda_function.py
+      - zip search-photos.zip lambda_function.py
+      - rm lambda_function.py
+
   post_build:
     commands:
       - echo "Deploying to Lambda functions"
-      - aws lambda update-function-code --function-name index-photos --zip-file fileb://index-photos.zip
-      - aws lambda update-function-code --function-name search-photos --zip-file fileb://search-photos.zip
+      - aws lambda update-function-code --function-name index-photos --zip-file fileb://LambdaFunctions/index-photos.zip
+      - aws lambda update-function-code --function-name search-photos --zip-file fileb://LambdaFunctions/search-photos.zip
+
 artifacts:
   files:
     - LambdaFunctions/index-photos.zip

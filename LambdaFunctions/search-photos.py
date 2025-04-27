@@ -6,7 +6,7 @@ from opensearchpy import OpenSearch, RequestsHttpConnection
 lex_client = boto3.client('lexv2-runtime', region_name='us-east-1')
 
 # ElasticSearch configuration
-es_endpoint = "https://search-photos-37ap2zxpgqqsuw4s7xl6oy552m.aos.us-east-1.on.aws"
+es_endpoint = "search-photos-37ap2zxpgqqsuw4s7xl6oy552m.aos.us-east-1.on.aws"
 es_username = "aa12037"
 es_password = "Abhikeer@123"
 
