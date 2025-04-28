@@ -228,6 +228,62 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
 
+  # Upload Endpoint
+  UploadResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PhotosAPICloudFormation
+      ParentId: !GetAtt PhotosAPICloudFormation.RootResourceId
+      PathPart: 'upload'
+
+  UploadBucketResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PhotosAPICloudFormation
+      ParentId: !Ref UploadResource
+      PathPart: '{bucket}'
+
+  UploadFilenameResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PhotosAPICloudFormation
+      ParentId: !Ref UploadBucketResource
+      PathPart: '{filename}'
+
+  UploadPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref PhotosAPICloudFormation
+      ResourceId: !Ref UploadFilenameResource
+      HttpMethod: PUT
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${IndexPhotosLambdaCloudFormation.Arn}/invocations'
+
+  UploadOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref PhotosAPICloudFormation
+      ResourceId: !Ref UploadFilenameResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'PUT,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
   # --- S3 BUCKETS ---
   StorageBucketCloudFormation:
     Type: AWS::S3::Bucket
@@ -235,10 +291,6 @@ Resources:
       BucketName: !Ref StorageBucketName
       VersioningConfiguration:
         Status: Enabled
-#      NotificationConfiguration:
-#        LambdaConfigurations:
-#          - Event: 's3:ObjectCreated:*'
-#            Function: !GetAtt IndexPhotosLambdaCloudFormation.Arn
 
   FrontendBucketCloudFormation:
     Type: AWS::S3::Bucket
