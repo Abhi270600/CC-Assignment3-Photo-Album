@@ -9,7 +9,7 @@ phases:
     commands:
       - echo "Building Lambda deployment packages"
       # Go to LambdaFunctions directory (relative path)
-      - cd ../../LambdaFunctions
+      - cd ../../../LambdaFunctions
 
       # Package index-photos Lambda
       - cp index-photos.py lambda_function.py
@@ -29,5 +29,5 @@ phases:
 
 artifacts:
   files:
-    - ../../LambdaFunctions/index-photos.zip
-    - ../../LambdaFunctions/search-photos.zip
+    - ../../../LambdaFunctions/index-photos.zip
+    - ../../../LambdaFunctions/search-photos.zip
