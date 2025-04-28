@@ -31,6 +31,8 @@ def lambda_handler(event, context):
     user_query = event["queryStringParameters"]["q"]
     print("User query:", user_query)
 
+    print("Sending query to lex")
+
     lex_response = lex_client.recognize_text(
         botId=BOT_ID,
         botAliasId=BOT_ALIAS_ID,

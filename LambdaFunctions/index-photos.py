@@ -30,7 +30,7 @@ def lambda_handler(event, context):
     bucket = event['Records'][0]['s3']['bucket']['name']
     key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
 
-    print("Staring to index photos")
+    print("Starting to index photos")
     print("bucket:", bucket)
     print("key:", key)
 
