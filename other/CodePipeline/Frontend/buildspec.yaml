@@ -8,9 +8,9 @@ phases:
   post_build:
     commands:
       # Move to the correct Frontend directory (relative to the project root)
-      - cd ../../../Frontend
+      - cd Frontend
       - aws s3 sync . s3://my-b1-frontend --exclude ".DS_Store" --exclude "README.md" --delete
 
 artifacts:
   files:
-    - ../../../Frontend/**/*
+    - Frontend/**/*
