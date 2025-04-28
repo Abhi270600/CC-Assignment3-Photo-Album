@@ -1,0 +1,292 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Photo Album Stack for 2 lambdas, 2 s3 buckets and one API Gateway'
+
+Parameters:
+  FrontendBucketName:
+    Type: String
+    Default: 'frontend-bucket-cloudformation-1'
+  StorageBucketName:
+    Type: String
+    Default: 'storage-bucket-cloudformation-1'
+  OpenSearchEndpoint:
+    Type: String
+    Default: 'search-photos-37ap2zxpgqqsuw4s7xl6oy552m.aos.us-east-1.on.aws'
+  OpenSearchUsername:
+    Type: String
+    Default: 'aa12037'
+  OpenSearchPassword:
+    Type: String
+    NoEcho: true
+    Default: 'Abhikeer@123'
+  LexBotId:
+    Type: String
+    Default: '4H8Q6R6UFR'
+  LexBotAliasId:
+    Type: String
+    Default: 'TSTALIASID'
+
+Resources:
+  # --- LAMBDA FUNCTIONS ---
+  IndexPhotosLambdaCloudFormation:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: 'index-photos-cloudformation'
+      Runtime: python3.9
+      Handler: 'index-photos.lambda_handler'
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          OPENSEARCH_ENDPOINT: !Ref OpenSearchEndpoint
+          OPENSEARCH_USERNAME: !Ref OpenSearchUsername
+          OPENSEARCH_PASSWORD: !Ref OpenSearchPassword
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import urllib
+          from datetime import datetime
+          from opensearchpy import OpenSearch, RequestsHttpConnection
+          import os
+          import time
+          import base64
+
+          s3 = boto3.client('s3')
+          rekognition = boto3.client('rekognition', region_name='us-east-1')
+
+          def lambda_handler(event, context):
+              bucket = event['Records'][0]['s3']['bucket']['name']
+              key = urllib.parse.unquote_plus(event['Records'][0]['s3']['object']['key'])
+
+              s3_object = s3.get_object(Bucket=bucket, Key=key)
+              object_content = s3_object['Body'].read()
+              decoded_content = base64.b64decode(object_content)
+
+              rekognition_response = rekognition.detect_labels(
+                  Image={'Bytes': decoded_content},
+                  MaxLabels=10,
+                  MinConfidence=80
+              )
+              rekognition_labels = [label['Name'] for label in rekognition_response['Labels']]
+
+              metadata = s3.head_object(Bucket=bucket, Key=key)
+              custom_labels = metadata['ResponseMetadata']['HTTPHeaders'].get('x-amz-meta-customlabels', '').split(',')
+              all_labels = custom_labels + rekognition_labels
+
+              es = OpenSearch(
+                  hosts=[{'host': os.environ['OPENSEARCH_ENDPOINT'], 'port': 443}],
+                  http_auth=(os.environ['OPENSEARCH_USERNAME'], os.environ['OPENSEARCH_PASSWORD']),
+                  use_ssl=True,
+                  verify_certs=True,
+                  connection_class=RequestsHttpConnection
+              )
+
+              document = {
+                  "objectKey": key,
+                  "bucket": bucket,
+                  "createdTimestamp": datetime.now().isoformat(),
+                  "labels": all_labels
+              }
+
+              es.index(index="photos", id=key, body=document, refresh=True)
+              time.sleep(10)
+              s3.delete_object(Bucket=bucket, Key=key)
+              s3.put_object(Bucket=bucket, Body=decoded_content, Key=key, ContentType='image/jpg')
+
+              return {'statusCode': 200, 'body': json.dumps('Photo indexed successfully')}
+
+  SearchPhotosLambdaCloudFormation:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: 'search-photos-cloudformation'
+      Runtime: python3.9
+      Handler: 'search-photos.lambda_handler'
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          OPENSEARCH_ENDPOINT: !Ref OpenSearchEndpoint
+          OPENSEARCH_USERNAME: !Ref OpenSearchUsername
+          OPENSEARCH_PASSWORD: !Ref OpenSearchPassword
+          LEX_BOT_ID: !Ref LexBotId
+          LEX_BOT_ALIAS_ID: !Ref LexBotAliasId
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          from opensearchpy import OpenSearch, RequestsHttpConnection
+
+          def lambda_handler(event, context):
+              lex_client = boto3.client('lexv2-runtime', region_name='us-east-1')
+              es = OpenSearch(
+                  hosts=[{'host': os.environ['OPENSEARCH_ENDPOINT'], 'port': 443}],
+                  http_auth=(os.environ['OPENSEARCH_USERNAME'], os.environ['OPENSEARCH_PASSWORD']),
+                  use_ssl=True,
+                  verify_certs=True,
+                  connection_class=RequestsHttpConnection
+              )
+
+              user_query = event["queryStringParameters"]["q"]
+              lex_response = lex_client.recognize_text(
+                  botId=os.environ['LEX_BOT_ID'],
+                  botAliasId=os.environ['LEX_BOT_ALIAS_ID'],
+                  localeId="en_US",
+                  sessionId="1234",
+                  text=user_query
+              )
+
+              slot_info = lex_response.get('sessionState', {}).get('intent', {}).get('slots', {})
+              extracted_labels = [slot_data['value']['interpretedValue'] for slot_name, slot_data in slot_info.items() 
+                                if slot_data and 'value' in slot_data]
+
+              image_metadata = []
+              for label in extracted_labels:
+                  response = es.search(index="photos", body={"query": {"match": {"labels": label}}})
+                  for hit in response['hits']['hits']:
+                      if all(hit['_source']['objectKey'] != item['objectKey'] for item in image_metadata):
+                          image_metadata.append(hit['_source'])
+
+              return {
+                  'headers': {
+                      'Access-Control-Allow-Headers': '*',
+                      'Access-Control-Allow-Origin': '*',
+                      'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+                  },
+                  'statusCode': 200,
+                  'body': json.dumps(image_metadata)
+              }
+
+  # --- IAM ROLE ---
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaPermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:*
+                  - s3:*
+                  - rekognition:DetectLabels
+                  - lex:RecognizeText
+                  - es:ESHttpPost
+                Resource: "*"
+
+  # --- API GATEWAY ---
+  PhotosAPICloudFormation:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: 'PhotosAPI-CloudFormation'
+      EndpointConfiguration:
+        Types: [REGIONAL]
+
+  # Search Endpoint
+  SearchResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PhotosAPICloudFormation
+      ParentId: !GetAtt PhotosAPICloudFormation.RootResourceId
+      PathPart: 'search'
+
+  SearchMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref PhotosAPICloudFormation
+      ResourceId: !Ref SearchResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SearchPhotosLambdaCloudFormation.Arn}/invocations'
+
+  SearchOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref PhotosAPICloudFormation
+      ResourceId: !Ref SearchResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # --- S3 BUCKETS ---
+  StorageBucketCloudFormation:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref StorageBucketName
+      VersioningConfiguration:
+        Status: Enabled
+#      NotificationConfiguration:
+#        LambdaConfigurations:
+#          - Event: 's3:ObjectCreated:*'
+#            Function: !GetAtt IndexPhotosLambdaCloudFormation.Arn
+
+  FrontendBucketCloudFormation:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref FrontendBucketName
+      WebsiteConfiguration:
+        IndexDocument: 'index.html'
+        ErrorDocument: 'error.html'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucketCloudFormation
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Sub 'arn:aws:s3:::${FrontendBucketCloudFormation}/*'
+
+  # --- LAMBDA PERMISSIONS ---
+  S3TriggerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !GetAtt IndexPhotosLambdaCloudFormation.Arn
+      Principal: 's3.amazonaws.com'
+      SourceArn: !GetAtt StorageBucketCloudFormation.Arn
+
+Outputs:
+  FrontendURL:
+    Description: 'Static website URL (update index.html via CodePipeline later)'
+    Value: !GetAtt FrontendBucketCloudFormation.WebsiteURL
+  APIGatewaySearchEndpoint:
+    Description: 'Search endpoint URL'
+    Value: !Sub 'https://${PhotosAPICloudFormation}.execute-api.${AWS::Region}.amazonaws.com/prod/search?q={query}'
+  StorageBucketName:
+    Description: 'Storage bucket for photos'
+    Value: !Ref StorageBucketCloudFormation
+  IndexLambdaName:
+    Description: 'Index Lambda for CodePipeline updates'
+    Value: !Ref IndexPhotosLambdaCloudFormation
+  SearchLambdaName:
+    Description: 'Search Lambda for CodePipeline updates'
+    Value: !Ref SearchPhotosLambdaCloudFormation

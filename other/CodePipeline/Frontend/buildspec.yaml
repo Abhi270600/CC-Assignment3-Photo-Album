@@ -9,7 +9,7 @@ phases:
     commands:
       # Move to the correct Frontend directory (relative to the project root)
       - cd Frontend
-      - aws s3 sync . s3://my-b1-frontend --exclude ".DS_Store" --exclude "README.md" --delete
+      - aws s3 sync . s3://frontend-bucket-cloudformation-1 --exclude ".DS_Store" --exclude "README.md" --delete
 
 artifacts:
   files:
