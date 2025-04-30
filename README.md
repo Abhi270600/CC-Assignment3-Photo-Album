@@ -17,6 +17,8 @@ The application follows a serverless architecture pattern using the following AW
 - **CloudFormation**: Defines infrastructure as code
 - **CodePipeline**: Automates deployment workflows
 
+![](images/Arch_diagram.png)
+
 ## Features
 
 - **Image Upload**: Upload photos with custom labels
