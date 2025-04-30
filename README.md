@@ -153,3 +153,6 @@ Continuous Integration and Deployment is implemented using AWS CodePipeline:
 
 - **Backend Pipeline**: Builds and deploys Lambda functions
   - Configuration in `other/CodePipeline/Backend/buildspec.yaml`
+
+## Demo Link
+https://youtu.be/hgkr7QADvYE
